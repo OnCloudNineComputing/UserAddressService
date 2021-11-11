@@ -1,31 +1,31 @@
-import pymysql
-import json
 import logging
 
 import middleware.context as context
+import pymysql
+from database_services.BaseDataResource import BaseDataResource
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-class RDBService:
+class RDBService(BaseDataResource):
 
     def __init__(self):
-        pass
+        super().__init__()
 
     @classmethod
-    def _get_db_connection(cls):
+    def get_db_connection(cls):
 
         db_connect_info = context.get_db_info()
 
-        logger.info("RDBService._get_db_connection:")
+        logger.info("RDBService.get_db_connection:")
         logger.info("\t HOST = " + db_connect_info['host'])
 
         db_info = context.get_db_info()
 
         db_connection = pymysql.connect(
-           **db_info,
+            **db_info,
             autocommit=True
         )
         return db_connection
@@ -33,7 +33,7 @@ class RDBService:
     @classmethod
     def run_sql(cls, sql_statement, args, fetch=False):
 
-        conn = RDBService._get_db_connection()
+        conn = RDBService.get_db_connection()
 
         try:
             cur = conn.cursor()
@@ -49,11 +49,11 @@ class RDBService:
     @classmethod
     def get_by_prefix(cls, db_schema, table_name, column_name, value_prefix):
 
-        conn = RDBService._get_db_connection()
+        conn = RDBService.get_db_connection()
         cur = conn.cursor()
 
-        sql = "select * from " + db_schema + "." + table_name + " where " + \
-            column_name + " like " + "'" + value_prefix + "%'"
+        sql = "SELECT * FROM " + db_schema + "." + table_name + " WHERE " + \
+              column_name + " LIKE " + "'" + value_prefix + "%'"
         print("SQL Statement = " + cur.mogrify(sql, None))
 
         res = cur.execute(sql)
@@ -74,80 +74,34 @@ class RDBService:
             clause = ""
             args = None
         else:
-            for k,v in template.items():
+            for k, v in template.items():
                 terms.append(k + "=%s")
                 args.append(v)
 
-            clause = " where " +  " AND ".join(terms)
-
+            clause = " WHERE " + " AND ".join(terms)
 
         return clause, args
 
     @classmethod
-    def find_by_template(cls, db_schema, table_name, template, field_list):
+    def find_by_template(cls, db_schema, table_name, template, order_by=None, limit=None, offset=None, field_list=None):
 
-        wc,args = RDBService.get_where_clause_args(template)
+        wc, args = RDBService.get_where_clause_args(template)
 
-        conn = RDBService._get_db_connection()
+        conn = RDBService.get_db_connection()
         cur = conn.cursor()
 
-        sql = "select * from " + db_schema + "." + table_name + " " + wc
-        res = cur.execute(sql, args=args)
-        res = cur.fetchall()
+        if field_list is None:
+            sql = "SELECT * FROM " + db_schema + "." + table_name + " " + wc
+        else:
+            sql = "SELECT " + field_list + " FROM " + db_schema + "." + \
+                  table_name + " " + wc
 
-        conn.close()
-
-        return res
-
-    @classmethod
-    def find_by_id(cls, db_schema, table_name, id, field_list):
-
-        conn = RDBService._get_db_connection()
-        cur = conn.cursor()
-
-        sql = "select * from " + db_schema + "." + table_name + " where id=%s"
-        args = [id]
-        res = cur.execute(sql, args=args)
-        res = cur.fetchall()
-
-        conn.close()
-
-        return res
-
-    @classmethod
-    def delete_by_id(cls, db_schema, table_name, id, field_list):
-
-        conn = RDBService._get_db_connection()
-        cur = conn.cursor()
-
-        sql = "delete from " + db_schema + "." + table_name + " where id=%s"
-        args = [id]
-        res = cur.execute(sql, args=args)
-        res = cur.fetchall()
-
-        conn.close()
-
-        return res
-
-
-    @classmethod
-    def update_by_id(cls, db_schema, table_name, id, data, field_list):
-
-        conn = RDBService._get_db_connection()
-        cur = conn.cursor()
-
-        cols = []
-        args = []
-        sql = "update " + db_schema + "." + table_name + " set "
-
-        for k, v in data.items():
-            cols.append(k+"=%s")
-            args.append(v)
-
-        sql += ", ".join(cols)
-        sql += " where id=%s"
-
-        args.append(id)
+        if order_by is not None:
+            sql += " ORDER BY " + order_by
+        if limit is not None:
+            sql += " LIMIT " + str(limit)
+        if offset is not None:
+            sql += " OFFSET " + str(offset)
 
         res = cur.execute(sql, args=args)
         res = cur.fetchall()
@@ -157,33 +111,69 @@ class RDBService:
         return res
 
     @classmethod
-    def next_id(cls, db_schema, table_name):
-        max_id = RDBService.run_sql("select max(id) from " + db_schema + "." + table_name, None, True)[0]['max(id)']
-        return max_id+1 if max_id else 1
+    def delete_by_template(cls, db_schema, table_name, template):
+
+        wc, args = RDBService.get_where_clause_args(template)
+
+        conn = RDBService.get_db_connection()
+        cur = conn.cursor()
+
+        sql = "DELETE FROM " + db_schema + "." + table_name + " " + wc
+        res = cur.execute(sql, args=args)
+        res = cur.fetchall()
+
+        sql = "ALTER TABLE " + db_schema + "." + table_name + " AUTO_INCREMENT = 1"
+        cur.execute(sql)
+
+        conn.close()
+
+        return res
+
+    @classmethod
+    def update_by_template(cls, db_schema, table_name, data_template, where_template):
+
+        wc, where_args = RDBService.get_where_clause_args(where_template)
+
+        terms = []
+        data_args = []
+        clause = None
+
+        if data_template is None or data_template == {}:
+            clause = ""
+            args = None
+        else:
+            for k, v in data_template.items():
+                terms.append(k + "=%s")
+                data_args.append(v)
+
+        args = data_args + where_args
+
+        conn = RDBService.get_db_connection()
+        cur = conn.cursor()
+
+        sql = "UPDATE " + db_schema + "." + table_name + " SET " + ", ".join(terms) + wc
+        res = cur.execute(sql, args=args)
+        # res = cur.fetchall()
+
+        conn.close()
+
+        return res
 
     @classmethod
     def create(cls, db_schema, table_name, create_data):
+        cols, vals, args = [], [], []
 
-        cols = []
-        vals = []
-        args = []
-
-        next_id = RDBService.next_id(db_schema, table_name)
-        cols.append('id')
-        vals.append('%s')
-        args.append(next_id)
-
-        for k,v in create_data.items():
+        for k, v in create_data.items():
             cols.append(k)
             vals.append('%s')
             args.append(v)
 
         cols_clause = "(" + ",".join(cols) + ")"
-        vals_clause = "values (" + ",".join(vals) + ")"
+        vals_clause = "VALUES (" + ",".join(vals) + ")"
 
-        sql_stmt = "insert into " + db_schema + "." + table_name + " " + cols_clause + \
-            " " + vals_clause
+        sql_stmt = "INSERT INTO " + db_schema + "." + table_name + " " + cols_clause + \
+                   " " + vals_clause
 
         res = RDBService.run_sql(sql_stmt, args)
-        return res
 
+        return res

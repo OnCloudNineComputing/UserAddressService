@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 from database_services.RDBService import RDBService
 
 
@@ -20,46 +21,48 @@ class BaseApplicationResource(ABC):
 
     @classmethod
     @abstractmethod
-    def get_links(self, resource_data):
+    def delete_by_template(cls, template):
         pass
 
     @classmethod
     @abstractmethod
-    def get_data_resource_info(self):
+    def update_by_template(cls, data_template, where_template):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def get_links(cls, resource_data, inputs):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def get_data_resource_info(cls):
         pass
 
 
 class BaseRDBApplicationResource(BaseApplicationResource):
 
     def __init__(self):
-        pass
+        super(BaseRDBApplicationResource, self).__init__()
 
     @classmethod
-    def get_by_template(cls, template):
+    def get_by_template(cls, template, order_by=None, limit=None, offset=None, field_list=None):
         db_name, table_name = cls.get_data_resource_info()
-        res = RDBService.find_by_template(db_name, table_name,
-                                          template, None)
+        res = RDBService.find_by_template(db_name, table_name, template, order_by, limit, offset, field_list)
         return res
 
     @classmethod
-    def get_by_id(cls, id):
+    def delete_by_template(cls, template):
         db_name, table_name = cls.get_data_resource_info()
-        res = RDBService.find_by_id(db_name, table_name,
-                                          id, None)
+        res = RDBService.delete_by_template(db_name, table_name,
+                                            template)
         return res
 
     @classmethod
-    def update_by_id(cls, id, data):
+    def update_by_template(cls, data_template, where_template):
         db_name, table_name = cls.get_data_resource_info()
-        res = RDBService.update_by_id(db_name, table_name,
-                                          id, data, None)
-        return res
-
-    @classmethod
-    def delete_by_id(cls, id):
-        db_name, table_name = cls.get_data_resource_info()
-        res = RDBService.delete_by_id(db_name, table_name,
-                                          id, None)
+        res = RDBService.update_by_template(db_name, table_name,
+                                            data_template, where_template)
         return res
 
     @classmethod
@@ -70,10 +73,10 @@ class BaseRDBApplicationResource(BaseApplicationResource):
 
     @classmethod
     @abstractmethod
-    def get_links(self, resource_data):
+    def get_links(cls, resource_data, inputs):
         pass
 
     @classmethod
     @abstractmethod
-    def get_data_resource_info(self):
+    def get_data_resource_info(cls):
         pass
